@@ -77,7 +77,7 @@ export async function chat(
   const anthropic = getClient()
 
   const response = await anthropic.messages.create({
-    model: "claude-3-5-sonnet-latest",
+    model: "claude-3-haiku-20240307",
     max_tokens: 4096,
     system: systemPrompt,
     messages: messages.map((m) => ({

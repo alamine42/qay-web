@@ -9,10 +9,10 @@
   "dependencies": {
     "bullmq": "^5.34.8",
     "playwright": "^1.49.1",
-    "@supabase/supabase-js": "^2.49.1"
+    "@supabase/supabase-js": "^2.49.1",
+    "tsx": "^4.19.2"
   },
   "devDependencies": {
-    "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "@types/node": "^22.10.5"
   }

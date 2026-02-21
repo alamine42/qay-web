@@ -14,7 +14,10 @@ import {
   Clock,
   Globe,
   BookOpen,
+  ExternalLink,
 } from "lucide-react"
+import { TestUsersManager } from "@/components/environment/test-users-manager"
+import type { TestUser } from "@/lib/types"
 
 export default async function AppOverviewPage({
   params,
@@ -47,10 +50,13 @@ export default async function AppOverviewPage({
 
   if (!app) redirect(`/org/${orgId}`)
 
-  // Get environments
+  // Get environments with test users (exclude password_encrypted for security)
   const { data: environments } = await supabase
     .from("environments")
-    .select("*")
+    .select(`
+      *,
+      test_users(id, role, username, description, is_enabled, created_at, updated_at)
+    `)
     .eq("app_id", appId)
     .order("is_default", { ascending: false })
 
@@ -161,47 +167,90 @@ export default async function AppOverviewPage({
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Environments */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Environments</CardTitle>
-              <CardDescription>Test environments for this app</CardDescription>
+        <Card className="overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between bg-gradient-to-r from-background to-muted/20">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 shrink-0">
+                <Globe className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div>
+                <CardTitle className="text-lg">Environments</CardTitle>
+                <CardDescription className="text-xs sm:text-sm">Test environments with credentials</CardDescription>
+              </div>
             </div>
             <Link href={`/org/${orgId}/apps/${appId}/settings`}>
-              <Button variant="outline" size="sm">
-                <Plus className="h-4 w-4 mr-2" />
-                Add
+              <Button variant="outline" size="sm" className="shadow-sm hover:shadow transition-shadow">
+                <Plus className="h-4 w-4 mr-1.5" />
+                <span className="hidden sm:inline">Add</span>
               </Button>
             </Link>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 sm:p-6">
             {environments && environments.length > 0 ? (
-              <div className="space-y-3">
-                {environments.map((env) => (
-                  <div
-                    key={env.id}
-                    className="flex items-center justify-between p-3 rounded-lg border"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-medium">{env.name}</p>
-                        {env.is_default && (
-                          <Badge variant="secondary" className="text-xs">
-                            Default
-                          </Badge>
-                        )}
+              <div className="space-y-4">
+                {environments.map((env) => {
+                  const testUsers = (env.test_users || []) as TestUser[]
+
+                  return (
+                    <div
+                      key={env.id}
+                      className="group rounded-xl border bg-card overflow-hidden transition-all duration-200 hover:shadow-md hover:border-border/80"
+                    >
+                      {/* Environment Header */}
+                      <div className="p-4 bg-gradient-to-r from-muted/30 to-transparent">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-semibold text-base">{env.name}</h4>
+                              {env.is_default && (
+                                <Badge variant="secondary" className="text-xs bg-emerald-500/10 text-emerald-600 border-emerald-200 dark:border-emerald-800">
+                                  Default
+                                </Badge>
+                              )}
+                            </div>
+                            <a
+                              href={env.base_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mt-1 group/link"
+                            >
+                              <span className="truncate max-w-[250px]">{env.base_url}</span>
+                              <ExternalLink className="h-3 w-3 opacity-0 group-hover/link:opacity-100 transition-opacity shrink-0" />
+                            </a>
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-sm text-muted-foreground truncate max-w-[300px]">
-                        {env.base_url}
-                      </p>
+
+                      {/* Test Users Section */}
+                      <div className="p-4 border-t bg-muted/5">
+                        <TestUsersManager
+                          environmentId={env.id}
+                          environmentName={env.name}
+                          testUsers={testUsers}
+                        />
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             ) : (
-              <div className="text-center py-6">
-                <Globe className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                <p className="text-muted-foreground">No environments yet</p>
+              <div className="relative overflow-hidden rounded-xl border border-dashed bg-gradient-to-br from-muted/30 to-muted/10 py-12 text-center">
+                <div className="absolute inset-0 bg-grid-slate-100 [mask-image:linear-gradient(0deg,transparent,white)] dark:bg-grid-slate-700/25" />
+                <div className="relative">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500/20 to-teal-500/20 mb-4">
+                    <Globe className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <p className="text-base font-medium text-foreground">No environments yet</p>
+                  <p className="text-sm text-muted-foreground mt-1 mb-4">
+                    Add an environment to start testing
+                  </p>
+                  <Link href={`/org/${orgId}/apps/${appId}/settings`}>
+                    <Button variant="outline" size="sm" className="shadow-sm">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Environment
+                    </Button>
+                  </Link>
+                </div>
               </div>
             )}
           </CardContent>

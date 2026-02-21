@@ -1,15 +1,29 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 import { executeStory } from "./execute-story"
 import type { TestRunJobData } from "./types"
+import { decrypt } from "../src/lib/crypto"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+
+interface TestUser {
+  id: string
+  role: string
+  username: string
+  password_encrypted: string
+  is_enabled: boolean
+}
+
+interface CredentialsMap {
+  [role: string]: { username: string; password: string }
+}
 
 interface ProgressUpdate {
   total: number
   completed: number
   passed: number
   failed: number
+  skipped: number
   current?: string
 }
 
@@ -39,6 +53,28 @@ export async function executeTestRun(
 
   if (envError || !environment) {
     throw new Error(`Environment not found: ${data.environmentId}`)
+  }
+
+  // Get test users for this environment and build credentials map
+  const { data: testUsers } = await supabase
+    .from("test_users")
+    .select("*")
+    .eq("environment_id", data.environmentId)
+    .eq("is_enabled", true)
+
+  const credentialsMap: CredentialsMap = {}
+  if (testUsers && testUsers.length > 0) {
+    for (const user of testUsers as TestUser[]) {
+      try {
+        const decryptedPassword = await decrypt(user.password_encrypted)
+        credentialsMap[user.role] = {
+          username: user.username,
+          password: decryptedPassword,
+        }
+      } catch (err) {
+        console.error(`Failed to decrypt password for role ${user.role}:`, err)
+      }
+    }
   }
 
   // Get stories to run
@@ -88,6 +124,7 @@ export async function executeTestRun(
         stories_total: 0,
         stories_passed: 0,
         stories_failed: 0,
+        stories_skipped: 0,
       })
       .eq("id", data.testRunId)
     return
@@ -107,6 +144,7 @@ export async function executeTestRun(
   // Execute stories
   let passed = 0
   let failed = 0
+  let skipped = 0
 
   for (let i = 0; i < stories.length; i++) {
     const story = stories[i]
@@ -117,13 +155,73 @@ export async function executeTestRun(
       completed: i,
       passed,
       failed,
+      skipped,
       current: story.title,
     })
 
     try {
+      // Check if story requires a role and if we have credentials
+      const requiredRole = story.required_role
+      let credentials: { username: string; password: string } | undefined
+      let skipReason: string | undefined
+
+      if (requiredRole) {
+        // Check if auth config is properly configured for form-based login
+        const authConfig = environment.auth_config
+        if (!authConfig || authConfig.type !== 'form') {
+          skipReason = `Story requires role "${requiredRole}" but environment auth is not configured for form login`
+        } else if (credentialsMap[requiredRole]) {
+          credentials = credentialsMap[requiredRole]
+        } else {
+          skipReason = `Missing test user for required role: ${requiredRole}`
+        }
+      }
+
+      // Skip story if required role credentials are missing or auth not configured
+      if (skipReason) {
+        // Save skipped result
+        await supabase.from("test_results").insert({
+          test_run_id: data.testRunId,
+          story_id: story.id,
+          journey_name: journey.name,
+          story_name: story.name,
+          passed: false,
+          duration_ms: 0,
+          error: skipReason,
+          retries: 0,
+        })
+
+        // Update story last run info
+        await supabase
+          .from("stories")
+          .update({
+            last_run_at: new Date().toISOString(),
+            last_result: "skipped",
+          })
+          .eq("id", story.id)
+
+        // Track skipped separately (not as failed)
+        skipped++
+        console.log(`Skipped story ${story.id}: ${skipReason}`)
+
+        // Update test run progress with skipped count
+        await supabase
+          .from("test_runs")
+          .update({
+            stories_passed: passed,
+            stories_failed: failed,
+            stories_skipped: skipped,
+          })
+          .eq("id", data.testRunId)
+
+        continue
+      }
+
       const result = await executeStory(story, environment.base_url, {
         retryCount: 3,
         screenshotOnFailure: true,
+        credentials,
+        authConfig: environment.auth_config,
       })
 
       // Save result
@@ -163,6 +261,7 @@ export async function executeTestRun(
         .update({
           stories_passed: passed,
           stories_failed: failed,
+          stories_skipped: skipped,
         })
         .eq("id", data.testRunId)
     } catch (error) {
@@ -205,6 +304,7 @@ export async function executeTestRun(
       duration_ms: durationMs,
       stories_passed: passed,
       stories_failed: failed,
+      stories_skipped: skipped,
     })
     .eq("id", data.testRunId)
 
@@ -213,5 +313,6 @@ export async function executeTestRun(
     completed: stories.length,
     passed,
     failed,
+    skipped,
   })
 }

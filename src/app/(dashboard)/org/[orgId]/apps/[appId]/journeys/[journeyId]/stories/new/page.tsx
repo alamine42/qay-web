@@ -35,6 +35,25 @@ export default async function NewStoryPage({
 
   if (!journey) redirect(`/org/${orgId}/apps/${appId}/journeys`)
 
+  // Get available roles from test users across all environments of this app
+  const { data: environments } = await supabase
+    .from("environments")
+    .select("id")
+    .eq("app_id", appId)
+
+  let availableRoles: string[] = []
+  if (environments && environments.length > 0) {
+    const { data: testUsers } = await supabase
+      .from("test_users")
+      .select("role")
+      .in("environment_id", environments.map(e => e.id))
+      .eq("is_enabled", true)
+
+    if (testUsers) {
+      availableRoles = [...new Set(testUsers.map(u => u.role))]
+    }
+  }
+
   return (
     <div className="space-y-6">
       <Link
@@ -52,7 +71,7 @@ export default async function NewStoryPage({
         </p>
       </div>
 
-      <CaptureWizard journeyId={journeyId} orgId={orgId} appId={appId} />
+      <CaptureWizard journeyId={journeyId} orgId={orgId} appId={appId} availableRoles={availableRoles} />
     </div>
   )
 }

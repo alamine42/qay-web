@@ -14,6 +14,7 @@ export async function createStory(data: {
   steps: StoryStep[]
   outcome: StoryOutcome
   tags?: string[]
+  required_role?: string
 }) {
   const supabase = await createClient()
 
@@ -22,7 +23,7 @@ export async function createStory(data: {
     return { error: "Unauthorized" }
   }
 
-  const { journeyId, title, preconditions, steps, outcome, tags } = data
+  const { journeyId, title, preconditions, steps, outcome, tags, required_role } = data
 
   // Get journey and verify access
   const { data: journey } = await supabase
@@ -71,6 +72,7 @@ export async function createStory(data: {
       outcome,
       tags: tags || [],
       position,
+      required_role,
     })
     .select()
     .single()
@@ -92,6 +94,7 @@ export async function updateStory(data: {
   tags?: string[]
   is_enabled?: boolean
   generated_test_code?: string
+  required_role?: string | null
 }) {
   const supabase = await createClient()
 

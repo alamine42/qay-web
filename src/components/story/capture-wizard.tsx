@@ -21,6 +21,7 @@ import {
   Wand2,
   Edit,
   Save,
+  Shield,
 } from "lucide-react"
 import { createStory } from "@/app/actions/stories"
 import type { StoryStep, StoryOutcome, StoryPrecondition } from "@/lib/types"
@@ -35,17 +36,19 @@ interface GeneratedStory {
   preconditions: StoryPrecondition[]
   steps: StoryStep[]
   outcome: StoryOutcome
+  required_role?: string
 }
 
 interface CaptureWizardProps {
   journeyId: string
   orgId: string
   appId: string
+  availableRoles?: string[]
 }
 
 type Step = "describe" | "clarify" | "review" | "confirm"
 
-export function CaptureWizard({ journeyId, orgId, appId }: CaptureWizardProps) {
+export function CaptureWizard({ journeyId, orgId, appId, availableRoles = [] }: CaptureWizardProps) {
   const router = useRouter()
   const [currentStep, setCurrentStep] = useState<Step>("describe")
   const [description, setDescription] = useState("")
@@ -171,6 +174,7 @@ export function CaptureWizard({ journeyId, orgId, appId }: CaptureWizardProps) {
         preconditions: generatedStory.preconditions,
         steps: generatedStory.steps,
         outcome: generatedStory.outcome,
+        required_role: generatedStory.required_role,
       })
 
       if (result.error) {
@@ -373,6 +377,62 @@ export function CaptureWizard({ journeyId, orgId, appId }: CaptureWizardProps) {
                 }
               />
             </div>
+
+            {availableRoles.length > 0 && (
+              <div className="space-y-3 p-4 rounded-xl border bg-gradient-to-br from-violet-500/5 to-purple-500/5">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500/20 to-purple-500/20">
+                    <Shield className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                  </div>
+                  <div>
+                    <Label className="text-sm font-semibold">Required Role</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Authenticate before running this story
+                    </p>
+                  </div>
+                </div>
+
+                {/* Role Pills - Mobile optimized */}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setGeneratedStory({
+                        ...generatedStory,
+                        required_role: undefined,
+                      })
+                    }
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-full border transition-all ${
+                      !generatedStory.required_role
+                        ? "bg-primary text-primary-foreground border-primary shadow-md"
+                        : "bg-muted/50 text-muted-foreground hover:bg-muted border-transparent"
+                    }`}
+                  >
+                    No auth
+                  </button>
+                  {availableRoles.map((role) => (
+                    <button
+                      key={role}
+                      type="button"
+                      onClick={() =>
+                        setGeneratedStory({
+                          ...generatedStory,
+                          required_role: role,
+                        })
+                      }
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-full border transition-all ${
+                        generatedStory.required_role === role
+                          ? "bg-gradient-to-r from-violet-600 to-purple-600 text-white border-transparent shadow-lg shadow-violet-500/25"
+                          : "bg-muted/50 text-muted-foreground hover:bg-muted border-transparent"
+                      }`}
+                    >
+                      <Shield className="h-3.5 w-3.5" />
+                      {role}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <Tabs defaultValue="preconditions">
               <TabsList className="grid w-full grid-cols-3">

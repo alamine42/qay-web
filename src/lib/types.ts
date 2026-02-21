@@ -97,6 +97,7 @@ export interface Story {
   generated_test_code?: string
   last_run_at?: string
   last_result?: TestStatus
+  required_role?: string
   created_at: string
 }
 
@@ -136,6 +137,7 @@ export interface TestRun {
   stories_total: number
   stories_passed: number
   stories_failed: number
+  stories_skipped: number
   duration_ms?: number
   started_at?: string
   completed_at?: string
@@ -233,4 +235,29 @@ export interface TriggerRunInput {
   environmentId: string
   journeyIds?: string[]
   storyIds?: string[]
+}
+
+// Test User (client-safe version without password)
+export interface TestUser {
+  id: string
+  environment_id?: string
+  role: string
+  username: string
+  description?: string
+  is_enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface TestUserInput {
+  environmentId: string
+  role: string
+  username: string
+  password: string
+  description?: string
+}
+
+export interface TestUserCredentials {
+  username: string
+  password: string
 }

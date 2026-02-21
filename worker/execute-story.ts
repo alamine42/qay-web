@@ -6,6 +6,21 @@ interface Story {
   id: string
   steps: StoryStep[]
   outcome: { verifications: Array<{ type: string; target?: string; expected: string }> }
+  required_role?: string
+}
+
+interface AuthConfig {
+  type: 'none' | 'basic' | 'form' | 'oauth'
+  loginUrl?: string
+  usernameSelector?: string
+  passwordSelector?: string
+  submitSelector?: string
+  successIndicator?: string
+}
+
+interface UserCredentials {
+  username: string
+  password: string
 }
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
@@ -14,6 +29,8 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 interface ExecutionOptions {
   retryCount: number
   screenshotOnFailure: boolean
+  credentials?: UserCredentials
+  authConfig?: AuthConfig
 }
 
 interface ExecutionResult {
@@ -67,6 +84,46 @@ async function uploadScreenshot(
   } catch (error) {
     console.error("Screenshot upload failed:", error)
     return null
+  }
+}
+
+async function authenticateUser(
+  page: Page,
+  baseUrl: string,
+  credentials: UserCredentials,
+  authConfig: AuthConfig
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Navigate to login page - resolve relative paths against baseUrl
+    const loginUrl = new URL(authConfig.loginUrl ?? "/", baseUrl).toString()
+    await page.goto(loginUrl, { waitUntil: "networkidle" })
+
+    // Default selectors if not provided
+    const usernameSelector = authConfig.usernameSelector || 'input[type="email"], input[name="email"], input[name="username"], #email, #username'
+    const passwordSelector = authConfig.passwordSelector || 'input[type="password"], input[name="password"], #password'
+    const submitSelector = authConfig.submitSelector || 'button[type="submit"], input[type="submit"], button:has-text("Login"), button:has-text("Sign in")'
+
+    // Fill credentials
+    await page.fill(usernameSelector, credentials.username)
+    await page.fill(passwordSelector, credentials.password)
+
+    // Click submit
+    await page.click(submitSelector)
+
+    // Wait for navigation or success indicator
+    if (authConfig.successIndicator) {
+      await page.waitForSelector(authConfig.successIndicator, { timeout: 10000 })
+    } else {
+      // Wait for URL change or network idle
+      await page.waitForLoadState("networkidle")
+    }
+
+    console.log(`Authenticated as ${credentials.username}`)
+    return { success: true }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    console.error(`Authentication failed: ${errorMessage}`)
+    return { success: false, error: `Authentication failed: ${errorMessage}` }
   }
 }
 
@@ -211,8 +268,21 @@ export async function executeStory(
   let retries = 0
 
   try {
-    // Navigate to base URL first
-    await page.goto(baseUrl, { waitUntil: "networkidle" })
+    // Authenticate if credentials provided
+    if (options.credentials && options.authConfig && options.authConfig.type === 'form') {
+      const authResult = await authenticateUser(
+        page,
+        baseUrl,
+        options.credentials,
+        options.authConfig
+      )
+      if (!authResult.success) {
+        throw new Error(authResult.error || "Authentication failed")
+      }
+    } else {
+      // Navigate to base URL first (if no auth needed)
+      await page.goto(baseUrl, { waitUntil: "networkidle" })
+    }
 
     // Execute each step
     for (let i = 0; i < story.steps.length; i++) {

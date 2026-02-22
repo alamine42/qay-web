@@ -24,6 +24,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { Label } from "@/components/ui/label"
+import {
   CheckCircle,
   XCircle,
   Clock,
@@ -117,31 +124,53 @@ export function StoryList({ stories, journeyId, orgId, appId }: StoryListProps) 
 
             <div className="flex items-center gap-3">
               {/* Status */}
-              {story.last_result === "passed" && (
-                <Badge variant="success" className="gap-1">
-                  <CheckCircle className="h-3 w-3" />
-                  Passed
-                </Badge>
-              )}
-              {story.last_result === "failed" && (
-                <Badge variant="destructive" className="gap-1">
-                  <XCircle className="h-3 w-3" />
-                  Failed
-                </Badge>
-              )}
-              {!story.last_result && (
-                <Badge variant="secondary" className="gap-1">
-                  <Clock className="h-3 w-3" />
-                  Pending
-                </Badge>
-              )}
+              <TooltipProvider delayDuration={300}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    {story.last_result === "passed" ? (
+                      <Badge variant="success" className="gap-1 cursor-help">
+                        <CheckCircle className="h-3 w-3" />
+                        Passed
+                      </Badge>
+                    ) : story.last_result === "failed" ? (
+                      <Badge variant="destructive" className="gap-1 cursor-help">
+                        <XCircle className="h-3 w-3" />
+                        Failed
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="gap-1 cursor-help">
+                        <Clock className="h-3 w-3" />
+                        Pending
+                      </Badge>
+                    )}
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    <p className="text-xs">
+                      {story.last_result === "passed"
+                        ? "This story passed its last test run"
+                        : story.last_result === "failed"
+                        ? "This story failed its last test run"
+                        : "This story hasn't been run yet"}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
 
               {/* Enable/Disable Toggle */}
-              <Switch
-                checked={story.is_enabled}
-                disabled={toggling === story.id}
-                onCheckedChange={(checked) => handleToggle(story.id, checked)}
-              />
+              <div className="flex items-center gap-2">
+                <Switch
+                  id={`story-enabled-${story.id}`}
+                  checked={story.is_enabled}
+                  disabled={toggling === story.id}
+                  onCheckedChange={(checked) => handleToggle(story.id, checked)}
+                />
+                <Label
+                  htmlFor={`story-enabled-${story.id}`}
+                  className="text-xs text-muted-foreground cursor-pointer"
+                >
+                  {story.is_enabled ? "Enabled" : "Disabled"}
+                </Label>
+              </div>
 
               {/* Actions */}
               <DropdownMenu>

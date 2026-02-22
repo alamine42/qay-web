@@ -26,10 +26,11 @@ export function TestRunProgress({
   if (!testRun) return null
 
   const total = testRun.stories_total || 1
-  const completed = testRun.stories_passed + testRun.stories_failed
+  const completed = testRun.stories_passed + testRun.stories_failed + (testRun.stories_skipped || 0)
   const progress = (completed / total) * 100
 
-  const currentResult = results[results.length - 1]
+  // Use current_story_name from test run (real-time) or fall back to last result
+  const currentStoryName = testRun.current_story_name || results[results.length - 1]?.story_name
 
   if (testRun.status === "completed" || testRun.status === "cancelled") {
     return null
@@ -54,9 +55,9 @@ export function TestRunProgress({
           <Progress value={progress} />
         </div>
 
-        {currentResult && (
+        {currentStoryName && (
           <div className="text-sm text-muted-foreground">
-            Running: <span className="font-medium">{currentResult.story_name}</span>
+            Running: <span className="font-medium">{currentStoryName}</span>
           </div>
         )}
 

@@ -142,6 +142,8 @@ export interface TestRun {
   started_at?: string
   completed_at?: string
   created_at: string
+  current_story_id?: string | null
+  current_story_name?: string | null
 }
 
 // Test Result

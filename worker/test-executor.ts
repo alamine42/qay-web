@@ -159,6 +159,15 @@ export async function executeTestRun(
       current: story.title,
     })
 
+    // Update current story in database for real-time UI updates
+    await supabase
+      .from("test_runs")
+      .update({
+        current_story_id: story.id,
+        current_story_name: story.title,
+      })
+      .eq("id", data.testRunId)
+
     try {
       // Check if story requires a role and if we have credentials
       const requiredRole = story.required_role
@@ -305,6 +314,8 @@ export async function executeTestRun(
       stories_passed: passed,
       stories_failed: failed,
       stories_skipped: skipped,
+      current_story_id: null,
+      current_story_name: null,
     })
     .eq("id", data.testRunId)
 

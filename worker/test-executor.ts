@@ -1,7 +1,7 @@
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 import { executeStory } from "./execute-story"
 import type { TestRunJobData } from "./types"
-import { decrypt } from "../src/lib/crypto"
+import { decrypt } from "./crypto"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!

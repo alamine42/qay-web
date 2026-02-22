@@ -145,18 +145,22 @@ export async function cancelTestRun(testRunId: string) {
     return { error: "Unauthorized" }
   }
 
-  // Update status
+  // Update status and clear current story
   const { error } = await supabase
     .from("test_runs")
     .update({
       status: "cancelled",
       completed_at: new Date().toISOString(),
+      current_story_id: null,
+      current_story_name: null,
     })
     .eq("id", testRunId)
 
   if (error) {
     return { error: error.message }
   }
+
+  revalidatePath(`/org/${testRun.organization_id}`)
 
   return { success: true }
 }

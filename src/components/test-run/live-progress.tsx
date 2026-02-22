@@ -26,11 +26,17 @@ export function TestRunProgress({
     initialResults,
   })
   const [cancelling, setCancelling] = useState(false)
+  const [cancelError, setCancelError] = useState<string | null>(null)
 
   const handleCancel = async () => {
     setCancelling(true)
-    await cancelTestRun(testRunId)
-    // Status will update via realtime subscription
+    setCancelError(null)
+    const result = await cancelTestRun(testRunId)
+    if (result.error) {
+      setCancelError(result.error)
+      setCancelling(false)
+    }
+    // On success, status will update via realtime subscription
   }
 
   if (!testRun) return null
@@ -95,6 +101,10 @@ export function TestRunProgress({
             {testRun.stories_failed} failed
           </span>
         </div>
+
+        {cancelError && (
+          <p className="text-sm text-destructive">{cancelError}</p>
+        )}
       </CardContent>
     </Card>
   )

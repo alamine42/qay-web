@@ -1,11 +1,28 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { toggleStoryEnabled, deleteStory } from "@/app/actions/stories"
+import { triggerTestRun } from "@/app/actions/test-runs"
+import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,6 +57,7 @@ import {
   Trash,
   GripVertical,
   Plus,
+  Loader2,
 } from "lucide-react"
 import type { Story } from "@/lib/types"
 
@@ -50,9 +68,47 @@ interface StoryListProps {
   appId: string
 }
 
+interface Environment {
+  id: string
+  name: string
+  is_default: boolean
+}
+
 export function StoryList({ stories, journeyId, orgId, appId }: StoryListProps) {
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [toggling, setToggling] = useState<string | null>(null)
+  const [runStoryId, setRunStoryId] = useState<string | null>(null)
+  const [environments, setEnvironments] = useState<Environment[]>([])
+  const [selectedEnv, setSelectedEnv] = useState<string>("")
+  const [loadingEnvs, setLoadingEnvs] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (!runStoryId) return
+
+    async function loadEnvironments() {
+      setLoadingEnvs(true)
+      const supabase = createClient()
+      const { data: envs } = await supabase
+        .from("environments")
+        .select("id, name, is_default")
+        .eq("app_id", appId)
+        .order("is_default", { ascending: false })
+
+      if (envs) {
+        setEnvironments(envs)
+        const defaultEnv = envs.find((e) => e.is_default)
+        if (defaultEnv) {
+          setSelectedEnv(defaultEnv.id)
+        } else if (envs.length > 0) {
+          setSelectedEnv(envs[0].id)
+        }
+      }
+      setLoadingEnvs(false)
+    }
+
+    loadEnvironments()
+  }, [runStoryId, appId])
 
   const handleToggle = async (storyId: string, enabled: boolean) => {
     setToggling(storyId)
@@ -65,6 +121,23 @@ export function StoryList({ stories, journeyId, orgId, appId }: StoryListProps) 
     await deleteStory(deleteId)
     setDeleteId(null)
   }
+
+  const handleRunStory = async () => {
+    if (!runStoryId || !selectedEnv) return
+    setSubmitting(true)
+
+    const formData = new FormData()
+    formData.set("orgId", orgId)
+    formData.set("appId", appId)
+    formData.set("environmentId", selectedEnv)
+    formData.set("storyIds", runStoryId)
+
+    await triggerTestRun(formData)
+    // Note: triggerTestRun redirects on success, so we only reach here on error
+    setSubmitting(false)
+  }
+
+  const runStory = stories.find((s) => s.id === runStoryId)
 
   if (stories.length === 0) {
     return (
@@ -186,7 +259,7 @@ export function StoryList({ stories, journeyId, orgId, appId }: StoryListProps) 
                       Edit
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setRunStoryId(story.id)}>
                     <Play className="h-4 w-4 mr-2" />
                     Run Test
                   </DropdownMenuItem>
@@ -226,6 +299,80 @@ export function StoryList({ stories, journeyId, orgId, appId }: StoryListProps) 
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Run Story Dialog */}
+      <Dialog open={!!runStoryId} onOpenChange={() => setRunStoryId(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Run Test</DialogTitle>
+            <DialogDescription>
+              Run "{runStory?.title}" against an environment
+            </DialogDescription>
+          </DialogHeader>
+
+          {loadingEnvs ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : environments.length === 0 ? (
+            <div className="text-center py-6">
+              <p className="text-sm text-muted-foreground mb-4">
+                No environments configured for this app.
+              </p>
+              <Link href={`/org/${orgId}/apps/${appId}/settings`}>
+                <Button variant="outline" size="sm">
+                  Configure Environments
+                </Button>
+              </Link>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label>Environment</Label>
+                <Select value={selectedEnv} onValueChange={setSelectedEnv}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select environment" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {environments.map((env) => (
+                      <SelectItem key={env.id} value={env.id}>
+                        {env.name}
+                        {env.is_default && " (default)"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setRunStoryId(null)}
+                  disabled={submitting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleRunStory}
+                  disabled={!selectedEnv || submitting}
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Starting...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-4 w-4 mr-2" />
+                      Run Test
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

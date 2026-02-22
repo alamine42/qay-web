@@ -13,6 +13,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
   MessageSquare,
   CheckCircle,
   ArrowRight,
@@ -22,6 +28,8 @@ import {
   Edit,
   Save,
   Shield,
+  Globe,
+  Users,
 } from "lucide-react"
 import { createStory } from "@/app/actions/stories"
 import type { StoryStep, StoryOutcome, StoryPrecondition } from "@/lib/types"
@@ -39,16 +47,25 @@ interface GeneratedStory {
   required_role?: string
 }
 
+interface EnvironmentWithTestUsers {
+  id: string
+  name: string
+  base_url: string
+  is_default: boolean
+  test_users: Array<{ role: string; username: string; description?: string }>
+}
+
 interface CaptureWizardProps {
   journeyId: string
   orgId: string
   appId: string
   availableRoles?: string[]
+  environments?: EnvironmentWithTestUsers[]
 }
 
 type Step = "describe" | "clarify" | "review" | "confirm"
 
-export function CaptureWizard({ journeyId, orgId, appId, availableRoles = [] }: CaptureWizardProps) {
+export function CaptureWizard({ journeyId, orgId, appId, availableRoles = [], environments = [] }: CaptureWizardProps) {
   const router = useRouter()
   const [currentStep, setCurrentStep] = useState<Step>("describe")
   const [description, setDescription] = useState("")
@@ -72,8 +89,16 @@ export function CaptureWizard({ journeyId, orgId, appId, availableRoles = [] }: 
         body: JSON.stringify({
           description,
           previousExchanges: [],
+          appId,
         }),
       })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        setError(errorData.error || "Failed to analyze story")
+        setLoading(false)
+        return
+      }
 
       const data = await response.json()
 
@@ -126,8 +151,16 @@ export function CaptureWizard({ journeyId, orgId, appId, availableRoles = [] }: 
         body: JSON.stringify({
           description: currentInput,
           previousExchanges: newMessages,
+          appId,
         }),
       })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        setError(errorData.error || "Failed to process response")
+        setLoading(false)
+        return
+      }
 
       const data = await response.json()
 
@@ -246,16 +279,79 @@ export function CaptureWizard({ journeyId, orgId, appId, availableRoles = [] }: 
 
       {/* Step Content */}
       {currentStep === "describe" && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Wand2 className="h-5 w-5" />
-              Describe Your Test
-            </CardTitle>
-            <CardDescription>
-              Tell us in natural language what you want to test. Be as detailed as possible.
-            </CardDescription>
-          </CardHeader>
+        <>
+          {/* App Context Card */}
+          {environments.length > 0 && (
+            <Card className="border-dashed">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Globe className="h-4 w-4 text-muted-foreground" />
+                  App Context
+                </CardTitle>
+                <CardDescription className="text-xs">
+                  The AI will use this information automatically
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="pt-0">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {environments.map((env) => (
+                    <div
+                      key={env.id}
+                      className="rounded-lg border bg-muted/30 p-3"
+                    >
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-sm">{env.name}</p>
+                        {env.is_default && (
+                          <Badge variant="secondary" className="text-xs">
+                            default
+                          </Badge>
+                        )}
+                      </div>
+                      <TooltipProvider delayDuration={300}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <p className="text-xs text-muted-foreground truncate mt-0.5 cursor-help">
+                              {env.base_url}
+                            </p>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-[300px]">
+                            <p className="text-xs break-all">{env.base_url}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      {env.test_users.length > 0 && (
+                        <div className="flex items-center gap-1.5 mt-2">
+                          <Users className="h-3 w-3 text-muted-foreground" />
+                          <div className="flex flex-wrap gap-1">
+                            {env.test_users.map((u, index) => (
+                              <Badge
+                                key={`${env.id}-${u.role}-${index}`}
+                                variant="outline"
+                                className="text-xs px-1.5 py-0"
+                              >
+                                {u.role}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Wand2 className="h-5 w-5" />
+                Describe Your Test
+              </CardTitle>
+              <CardDescription>
+                Tell us in natural language what you want to test. Be as detailed as possible.
+              </CardDescription>
+            </CardHeader>
           <CardContent>
             <Textarea
               placeholder="Example: I want to test that a user can log in with their email and password, see their dashboard, and log out successfully."
@@ -281,6 +377,7 @@ export function CaptureWizard({ journeyId, orgId, appId, availableRoles = [] }: 
             </Button>
           </CardFooter>
         </Card>
+        </>
       )}
 
       {currentStep === "clarify" && (

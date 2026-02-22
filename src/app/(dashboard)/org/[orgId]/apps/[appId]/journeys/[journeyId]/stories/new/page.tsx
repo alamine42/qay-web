@@ -25,34 +25,34 @@ export default async function NewStoryPage({
 
   if (!membership) redirect("/")
 
-  // Get journey
+  // Get journey and verify app belongs to org
   const { data: journey } = await supabase
     .from("journeys")
-    .select("title, app_id")
+    .select("title, app_id, apps!inner(organization_id)")
     .eq("id", journeyId)
     .eq("app_id", appId)
+    .eq("apps.organization_id", orgId)
     .single()
 
   if (!journey) redirect(`/org/${orgId}/apps/${appId}/journeys`)
 
-  // Get available roles from test users across all environments of this app
+  // Get environments with test users for context-aware story creation
   const { data: environments } = await supabase
     .from("environments")
-    .select("id")
+    .select(`
+      id,
+      name,
+      base_url,
+      is_default,
+      test_users(role, username, description)
+    `)
     .eq("app_id", appId)
+    .eq("test_users.is_enabled", true)
 
-  let availableRoles: string[] = []
-  if (environments && environments.length > 0) {
-    const { data: testUsers } = await supabase
-      .from("test_users")
-      .select("role")
-      .in("environment_id", environments.map(e => e.id))
-      .eq("is_enabled", true)
-
-    if (testUsers) {
-      availableRoles = [...new Set(testUsers.map(u => u.role))]
-    }
-  }
+  // Extract unique roles from all test users
+  const availableRoles = environments
+    ? [...new Set(environments.flatMap(e => (e.test_users || []).map(u => u.role)))]
+    : []
 
   return (
     <div className="space-y-6">
@@ -71,7 +71,13 @@ export default async function NewStoryPage({
         </p>
       </div>
 
-      <CaptureWizard journeyId={journeyId} orgId={orgId} appId={appId} availableRoles={availableRoles} />
+      <CaptureWizard
+        journeyId={journeyId}
+        orgId={orgId}
+        appId={appId}
+        availableRoles={availableRoles}
+        environments={environments || []}
+      />
     </div>
   )
 }

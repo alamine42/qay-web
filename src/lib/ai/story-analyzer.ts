@@ -5,9 +5,11 @@ let client: Anthropic | null = null
 
 function getClient(): Anthropic {
   if (!client) {
-    client = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    })
+    const apiKey = process.env.ANTHROPIC_API_KEY
+    if (!apiKey) {
+      throw new Error("ANTHROPIC_API_KEY environment variable is not set")
+    }
+    client = new Anthropic({ apiKey })
   }
   return client
 }
@@ -27,6 +29,16 @@ export interface StoryAnalysis {
     steps: StoryStep[]
     outcome: StoryOutcome
   }
+}
+
+export interface AppContext {
+  environments: Array<{
+    name: string
+    base_url: string
+    is_default: boolean
+    test_users: Array<{ role: string; username: string }>
+  }>
+  availableRoles: string[]
 }
 
 const STORY_ANALYSIS_SYSTEM_PROMPT = `You are an expert QA analyst helping to capture user stories for automated testing.
@@ -76,21 +88,26 @@ export async function chat(
 ): Promise<string> {
   const anthropic = getClient()
 
-  const response = await anthropic.messages.create({
-    model: "claude-3-haiku-20240307",
-    max_tokens: 4096,
-    system: systemPrompt,
-    messages: messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    })),
-  })
+  const response = await anthropic.messages.create(
+    {
+      model: "claude-3-haiku-20240307",
+      max_tokens: 4096,
+      system: systemPrompt,
+      messages: messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      })),
+    },
+    {
+      timeout: 30000, // 30 second timeout
+    }
+  )
 
   const textContent = response.content.find((c) => c.type === "text")
   return textContent ? textContent.text : ""
 }
 
-function extractJson(response: string): any {
+function extractJson(response: string): unknown {
   // Try to extract JSON from markdown code blocks first
   const jsonMatch =
     response.match(/```json\s*([\s\S]*?)\s*```/) ||
@@ -99,9 +116,82 @@ function extractJson(response: string): any {
   return JSON.parse(jsonStr.trim())
 }
 
+function isValidStoryAnalysis(data: unknown): data is StoryAnalysis {
+  if (typeof data !== "object" || data === null) return false
+  const obj = data as Record<string, unknown>
+  if (typeof obj.isComplete !== "boolean") return false
+  if (obj.isComplete && !obj.story) return false
+  if (obj.clarifyingQuestions && !isStringArray(obj.clarifyingQuestions)) return false
+  if (obj.missingInfo && !isStringArray(obj.missingInfo)) return false
+  if (obj.story) {
+    const story = obj.story as Record<string, unknown>
+    if (typeof story.title !== "string") return false
+    if (!Array.isArray(story.steps)) return false
+    if (!Array.isArray(story.preconditions)) return false
+  }
+  return true
+}
+
+function isStringArray(data: unknown): data is string[] {
+  return Array.isArray(data) && data.every(item => typeof item === "string")
+}
+
+function isValidClarifyingQuestionsResult(data: unknown): data is { clarifyingQuestions?: string[] } {
+  if (typeof data !== "object" || data === null) return false
+  const obj = data as Record<string, unknown>
+  if (obj.clarifyingQuestions !== undefined && !isStringArray(obj.clarifyingQuestions)) return false
+  return true
+}
+
+function isValidSelectorInference(data: unknown): data is SelectorInference {
+  if (typeof data !== "object" || data === null) return false
+  const obj = data as Record<string, unknown>
+  if (typeof obj.selector !== "string") return false
+  if (!["role", "text", "testid", "css"].includes(obj.strategy as string)) return false
+  if (typeof obj.confidence !== "number") return false
+  if (!Array.isArray(obj.alternatives)) return false
+  return true
+}
+
+function buildContextSection(context: AppContext): string {
+  const envList = context.environments
+    .map(e => `- ${e.name}${e.is_default ? ' (default)' : ''}: ${e.base_url}`)
+    .join('\n')
+
+  const roleList = context.availableRoles
+    .map(r => `- ${r}`)
+    .join('\n')
+
+  const testUsersByEnv = context.environments
+    .filter(e => e.test_users.length > 0)
+    .map(e => `- ${e.name}: ${e.test_users.map(u => `${u.role} (${u.username})`).join(', ')}`)
+    .join('\n')
+
+  return `
+## App Context (DO NOT ask for this information - use it directly)
+
+You have access to the following app configuration. Use it directly in your story without asking:
+
+Environments:
+${envList}
+
+Available Test Roles:
+${roleList}
+
+Test Users per Environment:
+${testUsersByEnv}
+
+When generating steps:
+- Use the default environment URL unless the user specifies otherwise
+- Reference test roles when authentication is needed
+- Don't ask about URLs or credentials - they're already configured
+`
+}
+
 export async function analyzeStory(
   description: string,
-  previousExchanges: ConversationMessage[] = []
+  previousExchanges: ConversationMessage[] = [],
+  context?: AppContext
 ): Promise<StoryAnalysis> {
   const messages: ConversationMessage[] = [
     ...previousExchanges,
@@ -111,10 +201,24 @@ export async function analyzeStory(
     },
   ]
 
-  const response = await chat(messages, STORY_ANALYSIS_SYSTEM_PROMPT)
+  const contextSection = context ? buildContextSection(context) : ''
+  const systemPrompt = STORY_ANALYSIS_SYSTEM_PROMPT + contextSection
+
+  const response = await chat(messages, systemPrompt)
 
   try {
-    return extractJson(response)
+    const parsed = extractJson(response)
+    if (isValidStoryAnalysis(parsed)) {
+      return parsed
+    }
+    // Parsed but invalid structure
+    return {
+      isComplete: false,
+      clarifyingQuestions: [
+        "Could you provide more details about what you want to test?",
+      ],
+      missingInfo: ["Unable to parse a valid story structure"],
+    }
   } catch {
     // If parsing fails, assume we need more info
     return {
@@ -142,7 +246,10 @@ export async function generateClarifyingQuestions(
 
   try {
     const result = extractJson(response)
-    return result.clarifyingQuestions || []
+    if (isValidClarifyingQuestionsResult(result)) {
+      return result.clarifyingQuestions || []
+    }
+    return ["Could you provide more details about the test scenario?"]
   } catch {
     return ["Could you provide more details about the test scenario?"]
   }
@@ -178,7 +285,16 @@ export async function inferSelector(action: string): Promise<SelectorInference> 
   )
 
   try {
-    return extractJson(response)
+    const result = extractJson(response)
+    if (isValidSelectorInference(result)) {
+      return result
+    }
+    return {
+      selector: "",
+      strategy: "css",
+      confidence: 0,
+      alternatives: [],
+    }
   } catch {
     return {
       selector: "",

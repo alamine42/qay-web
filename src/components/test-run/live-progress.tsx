@@ -1,9 +1,12 @@
 "use client"
 
+import { useState } from "react"
 import { useTestRunProgress } from "@/lib/hooks/use-test-run-progress"
+import { cancelTestRun } from "@/app/actions/test-runs"
 import { Progress } from "@/components/ui/progress"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Loader2 } from "lucide-react"
+import { Loader2, XCircle } from "lucide-react"
 import type { TestRun, TestResult } from "@/lib/types"
 
 interface TestRunProgressProps {
@@ -22,6 +25,13 @@ export function TestRunProgress({
     initialRun,
     initialResults,
   })
+  const [cancelling, setCancelling] = useState(false)
+
+  const handleCancel = async () => {
+    setCancelling(true)
+    await cancelTestRun(testRunId)
+    // Status will update via realtime subscription
+  }
 
   if (!testRun) return null
 
@@ -39,10 +49,26 @@ export function TestRunProgress({
   return (
     <Card className="border-blue-200 bg-blue-50/50">
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Test Run in Progress
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Test Run in Progress
+          </CardTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleCancel}
+            disabled={cancelling}
+            className="text-muted-foreground hover:text-destructive"
+          >
+            {cancelling ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <XCircle className="h-4 w-4" />
+            )}
+            <span className="ml-1">Cancel</span>
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">

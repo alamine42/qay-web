@@ -150,6 +150,26 @@ export async function executeTestRun(
     const story = stories[i]
     const journey = story.journey as { name: string; title: string }
 
+    // Check if run was cancelled
+    const { data: currentRun } = await supabase
+      .from("test_runs")
+      .select("status")
+      .eq("id", data.testRunId)
+      .single()
+
+    if (currentRun?.status === "cancelled") {
+      console.log(`Test run ${data.testRunId} was cancelled`)
+      // Clear current story and exit
+      await supabase
+        .from("test_runs")
+        .update({
+          current_story_id: null,
+          current_story_name: null,
+        })
+        .eq("id", data.testRunId)
+      return
+    }
+
     onProgress({
       total: stories.length,
       completed: i,

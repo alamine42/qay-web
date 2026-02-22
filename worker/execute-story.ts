@@ -96,7 +96,7 @@ async function authenticateUser(
   try {
     // Navigate to login page - resolve relative paths against baseUrl
     const loginUrl = new URL(authConfig.loginUrl ?? "/", baseUrl).toString()
-    await page.goto(loginUrl, { waitUntil: "networkidle" })
+    await page.goto(loginUrl, { waitUntil: "domcontentloaded" })
 
     // Default selectors if not provided
     const usernameSelector = authConfig.usernameSelector || 'input[type="email"], input[name="email"], input[name="username"], #email, #username'
@@ -114,8 +114,8 @@ async function authenticateUser(
     if (authConfig.successIndicator) {
       await page.waitForSelector(authConfig.successIndicator, { timeout: 10000 })
     } else {
-      // Wait for URL change or network idle
-      await page.waitForLoadState("networkidle")
+      // Wait for URL change or page load
+      await page.waitForLoadState("domcontentloaded")
     }
 
     console.log(`Authenticated as ${credentials.username}`)
@@ -141,7 +141,7 @@ async function executeStep(
     if (action.includes("navigate") || action.includes("go to")) {
       const url = step.value || step.element
       if (url) {
-        await page.goto(url, { waitUntil: "networkidle" })
+        await page.goto(url, { waitUntil: "domcontentloaded" })
       }
     }
     // Click
@@ -222,8 +222,8 @@ async function executeStep(
       await page.click(selector)
     }
 
-    // Wait for any navigation or network activity to settle
-    await page.waitForLoadState("networkidle").catch(() => {})
+    // Brief pause to let UI update after action
+    await page.waitForTimeout(100)
 
     return {
       step: stepIndex,
@@ -281,7 +281,7 @@ export async function executeStory(
       }
     } else {
       // Navigate to base URL first (if no auth needed)
-      await page.goto(baseUrl, { waitUntil: "networkidle" })
+      await page.goto(baseUrl, { waitUntil: "domcontentloaded" })
     }
 
     // Execute each step

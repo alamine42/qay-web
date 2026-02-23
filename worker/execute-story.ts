@@ -116,6 +116,8 @@ async function authenticateUser(
     } else {
       // Wait for URL change or page load
       await page.waitForLoadState("domcontentloaded")
+      // Give the app a moment to render after authentication
+      await page.waitForTimeout(500)
     }
 
     console.log(`Authenticated as ${credentials.username}`)
@@ -209,21 +211,39 @@ async function findElement(page: Page, target: string) {
   }
 
   // Try each strategy until one finds a visible element
+  console.log(`  Trying ${strategies.length} strategies...`)
   for (let i = 0; i < strategies.length; i++) {
     try {
       const locator = strategies[i]()
       // Check if element exists and is visible (with short timeout)
-      if (await locator.first().isVisible({ timeout: 1000 }).catch(() => false)) {
+      const isVisible = await locator.first().isVisible({ timeout: 1000 }).catch(() => false)
+      if (isVisible) {
         console.log(`  Found with strategy ${i + 1}/${strategies.length}`)
         return locator.first()
       }
-    } catch {
-      // Continue to next strategy
+    } catch (e) {
+      // Log strategy errors for debugging
+      console.log(`  Strategy ${i + 1} error: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
 
   // Fallback: try as a CSS selector or text
   console.log(`  No strategy matched, falling back to raw locator`)
+
+  // Debug: list what elements exist on the page that might be the target
+  try {
+    const buttons = await page.locator('button').count()
+    const testIds = await page.locator('[data-testid]').evaluateAll(els =>
+      els.map(el => el.getAttribute('data-testid')).filter(Boolean)
+    )
+    const ariaLabels = await page.locator('[aria-label]').evaluateAll(els =>
+      els.map(el => el.getAttribute('aria-label')).filter(Boolean)
+    )
+    console.log(`  Page has ${buttons} buttons, testIds: [${testIds.join(', ')}], ariaLabels: [${ariaLabels.join(', ')}]`)
+  } catch {
+    // Ignore debug errors
+  }
+
   return page.locator(target)
 }
 

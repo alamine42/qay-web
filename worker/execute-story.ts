@@ -127,6 +127,75 @@ async function authenticateUser(
   }
 }
 
+// Smart locator that tries multiple strategies to find an element
+async function findElement(page: Page, target: string) {
+  // If it looks like a CSS selector, use it directly
+  if (target.startsWith('#') || target.startsWith('.') || target.startsWith('[') || target.includes('=')) {
+    return page.locator(target)
+  }
+
+  const targetLower = target.toLowerCase()
+
+  // Try semantic locators first
+  const strategies = [
+    // By label
+    () => page.getByLabel(target, { exact: false }),
+    // By placeholder
+    () => page.getByPlaceholder(target, { exact: false }),
+    // By role with name
+    () => page.getByRole('textbox', { name: target }),
+    () => page.getByRole('button', { name: target }),
+    () => page.getByRole('link', { name: target }),
+    // By text content
+    () => page.getByText(target, { exact: false }),
+  ]
+
+  // Add type-specific selectors based on the target name
+  if (targetLower.includes('email')) {
+    strategies.unshift(
+      () => page.locator('input[type="email"]'),
+      () => page.locator('input[name="email"]'),
+      () => page.locator('input[name="Email"]'),
+      () => page.locator('#email'),
+    )
+  }
+  if (targetLower.includes('password')) {
+    strategies.unshift(
+      () => page.locator('input[type="password"]'),
+      () => page.locator('input[name="password"]'),
+      () => page.locator('#password'),
+    )
+  }
+  if (targetLower.includes('username')) {
+    strategies.unshift(
+      () => page.locator('input[name="username"]'),
+      () => page.locator('#username'),
+    )
+  }
+  if (targetLower.includes('submit') || targetLower.includes('login') || targetLower.includes('sign in')) {
+    strategies.unshift(
+      () => page.locator('button[type="submit"]'),
+      () => page.locator('input[type="submit"]'),
+    )
+  }
+
+  // Try each strategy until one finds a visible element
+  for (const strategy of strategies) {
+    try {
+      const locator = strategy()
+      // Check if element exists and is visible (with short timeout)
+      if (await locator.first().isVisible({ timeout: 1000 }).catch(() => false)) {
+        return locator.first()
+      }
+    } catch {
+      // Continue to next strategy
+    }
+  }
+
+  // Fallback: try as a CSS selector or text
+  return page.locator(target)
+}
+
 async function executeStep(
   page: Page,
   step: StoryStep,
@@ -146,9 +215,10 @@ async function executeStep(
     }
     // Click
     else if (action.includes("click") || action.includes("tap")) {
-      const selector = step.selector || step.element
-      if (selector) {
-        await page.click(selector)
+      const target = step.selector || step.element
+      if (target) {
+        const element = await findElement(page, target)
+        await element.click()
       }
     }
     // Type/Fill
@@ -157,30 +227,34 @@ async function executeStep(
       action.includes("enter") ||
       action.includes("fill")
     ) {
-      const selector = step.selector || step.element
+      const target = step.selector || step.element
       const value = step.value || ""
-      if (selector) {
-        await page.fill(selector, value)
+      if (target) {
+        const element = await findElement(page, target)
+        await element.fill(value)
       }
     }
     // Select
     else if (action.includes("select") || action.includes("choose")) {
-      const selector = step.selector || step.element
+      const target = step.selector || step.element
       const value = step.value || ""
-      if (selector) {
-        await page.selectOption(selector, value)
+      if (target) {
+        const element = await findElement(page, target)
+        await element.selectOption(value)
       }
     }
     // Check/Uncheck
     else if (action.includes("check")) {
-      const selector = step.selector || step.element
-      if (selector) {
-        await page.check(selector)
+      const target = step.selector || step.element
+      if (target) {
+        const element = await findElement(page, target)
+        await element.check()
       }
     } else if (action.includes("uncheck")) {
-      const selector = step.selector || step.element
-      if (selector) {
-        await page.uncheck(selector)
+      const target = step.selector || step.element
+      if (target) {
+        const element = await findElement(page, target)
+        await element.uncheck()
       }
     }
     // Wait
@@ -190,18 +264,20 @@ async function executeStep(
     }
     // Scroll
     else if (action.includes("scroll")) {
-      const selector = step.selector || step.element
-      if (selector) {
-        await page.locator(selector).scrollIntoViewIfNeeded()
+      const target = step.selector || step.element
+      if (target) {
+        const element = await findElement(page, target)
+        await element.scrollIntoViewIfNeeded()
       } else {
         await page.evaluate(() => window.scrollBy(0, 300))
       }
     }
     // Hover
     else if (action.includes("hover")) {
-      const selector = step.selector || step.element
-      if (selector) {
-        await page.hover(selector)
+      const target = step.selector || step.element
+      if (target) {
+        const element = await findElement(page, target)
+        await element.hover()
       }
     }
     // Press key
@@ -211,15 +287,17 @@ async function executeStep(
     }
     // Focus
     else if (action.includes("focus")) {
-      const selector = step.selector || step.element
-      if (selector) {
-        await page.focus(selector)
+      const target = step.selector || step.element
+      if (target) {
+        const element = await findElement(page, target)
+        await element.focus()
       }
     }
     // Default: try to click if element provided
     else if (step.selector || step.element) {
-      const selector = step.selector || step.element!
-      await page.click(selector)
+      const target = step.selector || step.element!
+      const element = await findElement(page, target)
+      await element.click()
     }
 
     // Brief pause to let UI update after action

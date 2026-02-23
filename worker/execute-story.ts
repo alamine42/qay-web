@@ -178,6 +178,32 @@ async function findElement(page: Page, target: string) {
       () => page.locator('input[type="submit"]'),
     )
   }
+  if (targetLower.includes('menu') || targetLower.includes('user') || targetLower.includes('avatar') || targetLower.includes('profile')) {
+    strategies.unshift(
+      // Common user menu patterns
+      () => page.getByRole('button', { name: /user|menu|profile|avatar|account/i }),
+      () => page.locator('[data-testid*="user"], [data-testid*="menu"], [data-testid*="avatar"], [data-testid*="profile"]'),
+      () => page.locator('[aria-label*="user" i], [aria-label*="menu" i], [aria-label*="profile" i], [aria-label*="account" i]'),
+      () => page.locator('button:has(img[alt*="avatar" i]), button:has(img[alt*="user" i])'),
+      () => page.locator('[class*="avatar"], [class*="user-menu"], [class*="profile"]').first(),
+      // Dropdown triggers
+      () => page.getByRole('menubutton'),
+      () => page.locator('button:has([class*="avatar"]), button:has([class*="user"])'),
+    )
+  }
+  if (targetLower.includes('logout') || targetLower.includes('sign out') || targetLower.includes('log out')) {
+    strategies.unshift(
+      () => page.getByRole('menuitem', { name: /logout|log out|sign out/i }),
+      () => page.getByRole('button', { name: /logout|log out|sign out/i }),
+      () => page.getByText(/logout|log out|sign out/i),
+    )
+  }
+  if (targetLower.includes('dashboard')) {
+    strategies.unshift(
+      () => page.getByRole('link', { name: /dashboard/i }),
+      () => page.getByText(/dashboard/i),
+    )
+  }
 
   // Try each strategy until one finds a visible element
   for (const strategy of strategies) {

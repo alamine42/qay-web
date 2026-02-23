@@ -129,8 +129,11 @@ async function authenticateUser(
 
 // Smart locator that tries multiple strategies to find an element
 async function findElement(page: Page, target: string) {
+  console.log(`Finding element: "${target}"`)
+
   // If it looks like a CSS selector, use it directly
   if (target.startsWith('#') || target.startsWith('.') || target.startsWith('[') || target.includes('=')) {
+    console.log(`  Using as CSS selector directly`)
     return page.locator(target)
   }
 
@@ -206,11 +209,12 @@ async function findElement(page: Page, target: string) {
   }
 
   // Try each strategy until one finds a visible element
-  for (const strategy of strategies) {
+  for (let i = 0; i < strategies.length; i++) {
     try {
-      const locator = strategy()
+      const locator = strategies[i]()
       // Check if element exists and is visible (with short timeout)
       if (await locator.first().isVisible({ timeout: 1000 }).catch(() => false)) {
+        console.log(`  Found with strategy ${i + 1}/${strategies.length}`)
         return locator.first()
       }
     } catch {
@@ -219,6 +223,7 @@ async function findElement(page: Page, target: string) {
   }
 
   // Fallback: try as a CSS selector or text
+  console.log(`  No strategy matched, falling back to raw locator`)
   return page.locator(target)
 }
 

@@ -97,9 +97,37 @@ export function useTestRunProgress({
       )
       .subscribe()
 
+    // Polling fallback - refresh every 2 seconds while in progress
+    const pollInterval = setInterval(async () => {
+      const { data: run } = await supabase
+        .from("test_runs")
+        .select("*")
+        .eq("id", testRunId)
+        .single()
+
+      if (run) {
+        setTestRun(run)
+        // Stop polling if completed or cancelled
+        if (run.status === "completed" || run.status === "cancelled") {
+          clearInterval(pollInterval)
+        }
+      }
+
+      const { data: newResults } = await supabase
+        .from("test_results")
+        .select("*")
+        .eq("test_run_id", testRunId)
+        .order("created_at")
+
+      if (newResults) {
+        setResults(newResults)
+      }
+    }, 2000)
+
     return () => {
       runChannel.unsubscribe()
       resultsChannel.unsubscribe()
+      clearInterval(pollInterval)
     }
   }, [testRunId, initialRun, initialResults])
 

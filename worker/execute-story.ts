@@ -187,7 +187,7 @@ async function findElement(page: Page, target: string) {
       () => page.locator('button:has(img[alt*="avatar" i]), button:has(img[alt*="user" i])'),
       () => page.locator('[class*="avatar"], [class*="user-menu"], [class*="profile"]').first(),
       // Dropdown triggers
-      () => page.getByRole('menubutton'),
+      () => page.locator('[aria-haspopup="menu"], [aria-haspopup="true"]'),
       () => page.locator('button:has([class*="avatar"]), button:has([class*="user"])'),
     )
   }

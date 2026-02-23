@@ -37,7 +37,12 @@ export function Header({ user }: HeaderProps) {
       <div className="flex items-center gap-4">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="relative h-8 w-8 rounded-full">
+            <Button
+              variant="ghost"
+              className="relative h-8 w-8 rounded-full"
+              data-testid="user-menu"
+              aria-label="User menu"
+            >
               <Avatar className="h-8 w-8">
                 <AvatarFallback>
                   {user.email?.[0].toUpperCase()}

@@ -35,7 +35,9 @@ export async function executeTestRun(
     throw new Error(`Missing Supabase config: URL=${!!supabaseUrl}, KEY=${!!supabaseServiceKey}`)
   }
 
-  console.log(`Connecting to Supabase: ${supabaseUrl}`)
+  // Service role keys start with "eyJ" and contain "service_role" when decoded
+  const isServiceKey = supabaseServiceKey.startsWith("eyJ") && supabaseServiceKey.length > 200
+  console.log(`Connecting to Supabase: ${supabaseUrl} (key length: ${supabaseServiceKey.length}, likely service key: ${isServiceKey})`)
   const supabase = createSupabaseClient(supabaseUrl, supabaseServiceKey)
 
   // Get test run

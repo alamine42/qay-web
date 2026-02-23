@@ -31,6 +31,11 @@ export async function executeTestRun(
   data: TestRunJobData,
   onProgress: (progress: ProgressUpdate) => void
 ): Promise<void> {
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error(`Missing Supabase config: URL=${!!supabaseUrl}, KEY=${!!supabaseServiceKey}`)
+  }
+
+  console.log(`Connecting to Supabase: ${supabaseUrl}`)
   const supabase = createSupabaseClient(supabaseUrl, supabaseServiceKey)
 
   // Get test run
@@ -40,7 +45,12 @@ export async function executeTestRun(
     .eq("id", data.testRunId)
     .single()
 
-  if (runError || !testRun) {
+  if (runError) {
+    console.error(`Supabase error fetching test run ${data.testRunId}:`, runError)
+    throw new Error(`Test run not found: ${data.testRunId} - ${runError.message}`)
+  }
+
+  if (!testRun) {
     throw new Error(`Test run not found: ${data.testRunId}`)
   }
 
